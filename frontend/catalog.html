@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catalog - Television Store</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-brand">📺 TV Store</a>
+            <ul class="nav-links">
+                <li><a href="index.html">Home</a></li>
+                <li><a href="catalog.html">Catalog</a></li>
+                <li><a href="cart.html">Cart (<span id="cart-count">0</span>)</a></li>
+                <li class="nav-user">
+                    <span class="user-name" id="user-name"></span>
+                    <a href="dashboard.html" id="dashboard-link" style="display: none;">Dashboard</a>
+                    <a href="admin.html" id="admin-link" style="display: none;">Admin</a>
+                    <a href="login.html" id="login-link">Login</a>
+                    <button class="btn btn-sm btn-danger" id="logout-btn" style="display: none;">Logout</button>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="page-header">
+            <h1 class="page-title">TV Catalog</h1>
+            <p class="page-subtitle">Browse our collection of televisions</p>
+        </div>
+
+        <div class="filters">
+            <div class="filters-row">
+                <div class="form-group">
+                    <label class="form-label">Brand</label>
+                    <input type="text" class="form-input" id="filter-brand" placeholder="Search by brand...">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Min Price</label>
+                    <input type="number" class="form-input" id="filter-min-price" placeholder="0">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Max Price</label>
+                    <input type="number" class="form-input" id="filter-max-price" placeholder="10000">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Smart TV</label>
+                    <select class="form-select" id="filter-smart-tv">
+                        <option value="">All</option>
+                        <option value="true">Smart TV Only</option>
+                        <option value="false">Non-Smart TV</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Sort By</label>
+                    <select class="form-select" id="sort-by">
+                        <option value="createdAt">Newest</option>
+                        <option value="price">Price</option>
+                        <option value="brand">Brand</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Order</label>
+                    <select class="form-select" id="sort-order">
+                        <option value="desc">Descending</option>
+                        <option value="asc">Ascending</option>
+                    </select>
+                </div>
+            </div>
+            <div style="margin-top: 1rem;">
+                <button class="btn btn-primary" id="apply-filters">Apply Filters</button>
+                <button class="btn btn-outline" id="reset-filters">Reset</button>
+            </div>
+        </div>
+
+        <div id="loading" class="loading">Loading products...</div>
+        <div id="products-grid" class="grid grid-3"></div>
+
+        <!-- Pagination -->
+        <div id="pagination" style="display: flex; justify-content: center; gap: 1rem; margin-top: 2rem;">
+        </div>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+    <script>
+        let currentPage = 1;
+        const limit = 9;
+
+        function updateNavigation() {
+            const user = getCurrentUser();
+            const loginLink = document.getElementById('login-link');
+            const logoutBtn = document.getElementById('logout-btn');
+            const userName = document.getElementById('user-name');
+            const dashboardLink = document.getElementById('dashboard-link');
+            const adminLink = document.getElementById('admin-link');
+            
+            if (user) {
+                loginLink.style.display = 'none';
+                logoutBtn.style.display = 'inline-block';
+                userName.textContent = user.name;
+                dashboardLink.style.display = 'inline-block';
+                
+                if (user.role === 'admin') {
+                    adminLink.style.display = 'inline-block';
+                }
+            }
+            
+            const cart = JSON.parse(localStorage.getItem('cart') || '[]');
+            document.getElementById('cart-count').textContent = cart.length;
+        }
+
+        document.getElementById('logout-btn')?.addEventListener('click', logout);
+
+        function getFilters() {
+            const filters = {
+                page: currentPage,
+                limit: limit
+            };
+
+            const brand = document.getElementById('filter-brand').value;
+            if (brand) filters.brand = brand;
+
+            const minPrice = document.getElementById('filter-min-price').value;
+            if (minPrice) filters.minPrice = minPrice;
+
+            const maxPrice = document.getElementById('filter-max-price').value;
+            if (maxPrice) filters.maxPrice = maxPrice;
+
+            const smartTV = document.getElementById('filter-smart-tv').value;
+            if (smartTV) filters.smartTV = smartTV;
+
+            filters.sortBy = document.getElementById('sort-by').value;
+            filters.order = document.getElementById('sort-order').value;
+
+            return filters;
+        }
+
+        async function loadProducts() {
+            try {
+                const filters = getFilters();
+                const data = await API.getAllTVs(filters);
+                
+                const products = data.data || data;
+                const pagination = data.pagination;
+                
+                const container = document.getElementById('products-grid');
+                const loading = document.getElementById('loading');
+                
+                loading.style.display = 'none';
+                
+                if (products.length === 0) {
+                    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📺</div><h3 class="empty-state-title">No products found</h3><p class="empty-state-text">Try adjusting your filters</p></div>';
+                    document.getElementById('pagination').innerHTML = '';
+                    return;
+                }
+                
+                container.innerHTML = products.map(tv => `
+                    <div class="card product-card">
+                        <div class="card-img"></div>
+                        ${tv.stock > 0 ? '<span class="product-badge">In Stock</span>' : ''}
+                        <div class="card-body">
+                            <h3 class="card-title">${tv.brand} ${tv.model}</h3>
+                            <p class="card-text">
+                                ${tv.specs?.size || 'N/A'} | ${tv.specs?.resolution || 'N/A'}
+                                ${tv.specs?.smartTV ? ' | Smart TV' : ''}
+                            </p>
+                            <div class="product-price">${formatPrice(tv.price)}</div>
+                            <p class="product-stock ${tv.stock > 0 ? 'in-stock' : 'out-of-stock'}">
+                                ${tv.stock > 0 ? `${tv.stock} in stock` : 'Out of stock'}
+                            </p>
+                        </div>
+                        <div class="card-footer">
+                            <a href="product.html?id=${tv._id}" class="btn btn-outline btn-sm">View Details</a>
+                            <button class="btn btn-primary btn-sm" onclick="addToCart('${tv._id}')" 
+                                ${tv.stock === 0 ? 'disabled' : ''}>
+                                Add to Cart
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+
+                if (pagination) {
+                    updatePagination(pagination);
+                }
+            } catch (error) {
+                console.error('Error loading products:', error);
+                document.getElementById('loading').textContent = 'Error loading products';
+            }
+        }
+
+        function updatePagination(pagination) {
+            const container = document.getElementById('pagination');
+            const { currentPage, totalPages } = pagination;
+
+            let html = '';
+
+            if (currentPage > 1) {
+                html += `<button class="btn btn-outline btn-sm" onclick="changePage(${currentPage - 1})">Previous</button>`;
+            }
+
+            for (let i = 1; i <= totalPages; i++) {
+                if (i === currentPage) {
+                    html += `<button class="btn btn-primary btn-sm">${i}</button>`;
+                } else {
+                    html += `<button class="btn btn-outline btn-sm" onclick="changePage(${i})">${i}</button>`;
+                }
+            }
+
+            if (currentPage < totalPages) {
+                html += `<button class="btn btn-outline btn-sm" onclick="changePage(${currentPage + 1})">Next</button>`;
+            }
+
+            container.innerHTML = html;
+        }
+
+        function changePage(page) {
+            currentPage = page;
+            window.scrollTo(0, 0);
+            loadProducts();
+        }
+
+        function addToCart(tvId) {
+            const cart = JSON.parse(localStorage.getItem('cart') || '[]');
+            
+            const existing = cart.find(item => item.tvId === tvId);
+            if (existing) {
+                existing.quantity++;
+            } else {
+                cart.push({ tvId, quantity: 1 });
+            }
+            
+            localStorage.setItem('cart', JSON.stringify(cart));
+            updateNavigation();
+            showNotification('Added to cart!', 'success');
+        }
+
+        document.getElementById('apply-filters').addEventListener('click', () => {
+            currentPage = 1;
+            loadProducts();
+        });
+
+        document.getElementById('reset-filters').addEventListener('click', () => {
+            document.getElementById('filter-brand').value = '';
+            document.getElementById('filter-min-price').value = '';
+            document.getElementById('filter-max-price').value = '';
+            document.getElementById('filter-smart-tv').value = '';
+            document.getElementById('sort-by').value = 'createdAt';
+            document.getElementById('sort-order').value = 'desc';
+            currentPage = 1;
+            loadProducts();
+        });
+
+        updateNavigation();
+        loadProducts();
+    </script>
+</body>
+</html>

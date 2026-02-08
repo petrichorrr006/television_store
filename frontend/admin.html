@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - Television Store</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-brand">📺 TV Store</a>
+            <ul class="nav-links">
+                <li><a href="index.html">Home</a></li>
+                <li><a href="catalog.html">Catalog</a></li>
+                <li><a href="cart.html">Cart (<span id="cart-count">0</span>)</a></li>
+                <li class="nav-user">
+                    <span class="user-name" id="user-name"></span>
+                    <a href="dashboard.html">Dashboard</a>
+                    <a href="admin.html">Admin</a>
+                    <button class="btn btn-sm btn-danger" id="logout-btn">Logout</button>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="page-header">
+            <h1 class="page-title">Admin Panel</h1>
+            <p class="page-subtitle">Manage products, orders, and view statistics</p>
+        </div>
+
+        <!-- Tabs -->
+        <div style="display: flex; gap: 1rem; margin-bottom: 2rem; border-bottom: 2px solid var(--border-color);">
+            <button class="btn btn-outline tab-btn active" data-tab="products">Products</button>
+            <button class="btn btn-outline tab-btn" data-tab="orders">Orders</button>
+            <button class="btn btn-outline tab-btn" data-tab="stats">Statistics</button>
+        </div>
+
+        <!-- Products Tab -->
+        <div id="products-tab" class="tab-content">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                <h2>Manage Products</h2>
+                <button class="btn btn-primary" id="add-product-btn">Add New Product</button>
+            </div>
+            
+            <div id="products-loading" class="loading">Loading products...</div>
+            <div class="table-container">
+                <table id="products-table" style="display: none;">
+                    <thead>
+                        <tr>
+                            <th>Brand</th>
+                            <th>Model</th>
+                            <th>Price</th>
+                            <th>Stock</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="products-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Orders Tab -->
+        <div id="orders-tab" class="tab-content" style="display: none;">
+            <h2 style="margin-bottom: 2rem;">Manage Orders</h2>
+            
+            <div id="orders-loading" class="loading">Loading orders...</div>
+            <div class="table-container">
+                <table id="orders-table" style="display: none;">
+                    <thead>
+                        <tr>
+                            <th>Order ID</th>
+                            <th>Customer</th>
+                            <th>Total</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="orders-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Statistics Tab -->
+        <div id="stats-tab" class="tab-content" style="display: none;">
+            <h2 style="margin-bottom: 2rem;">Sales Statistics</h2>
+            
+            <div id="stats-loading" class="loading">Loading statistics...</div>
+            <div id="stats-content"></div>
+        </div>
+    </div>
+
+    <!-- Add/Edit Product Modal -->
+    <div class="modal" id="product-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title" id="modal-title">Add Product</h2>
+            </div>
+            <form id="product-form">
+                <div class="form-group">
+                    <label class="form-label">Brand</label>
+                    <input type="text" class="form-input" id="product-brand" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Model</label>
+                    <input type="text" class="form-input" id="product-model" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Price</label>
+                    <input type="number" class="form-input" id="product-price" required min="0">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Stock</label>
+                    <input type="number" class="form-input" id="product-stock" required min="0">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Size</label>
+                    <input type="text" class="form-input" id="product-size" placeholder='e.g., 55"'>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Resolution</label>
+                    <input type="text" class="form-input" id="product-resolution" placeholder="e.g., 4K UHD">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Smart TV</label>
+                    <select class="form-select" id="product-smart-tv">
+                        <option value="true">Yes</option>
+                        <option value="false">No</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">HDMI Ports</label>
+                    <input type="number" class="form-input" id="product-hdmi" min="0">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" id="cancel-product">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Product</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+    <script>
+        let currentEditId = null;
+
+        // Check admin access
+        if (!isLoggedIn() || !isAdmin()) {
+            showNotification('Access denied. Admin only.', 'error');
+            setTimeout(() => window.location.href = 'index.html', 1500);
+        }
+
+        const user = getCurrentUser();
+        document.getElementById('user-name').textContent = user?.name || '';
+        document.getElementById('logout-btn').addEventListener('click', logout);
+
+        // Update cart count
+        const cart = JSON.parse(localStorage.getItem('cart') || '[]');
+        document.getElementById('cart-count').textContent = cart.length;
+
+        // Tabs
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tab = btn.dataset.tab;
+                
+                // Update buttons
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                
+                // Update content
+                document.querySelectorAll('.tab-content').forEach(content => {
+                    content.style.display = 'none';
+                });
+                document.getElementById(`${tab}-tab`).style.display = 'block';
+                
+                // Load data
+                if (tab === 'products') loadProducts();
+                if (tab === 'orders') loadOrders();
+                if (tab === 'stats') loadStats();
+            });
+        });
+
+        // Load products
+        async function loadProducts() {
+            try {
+                const data = await API.getAllTVs({ limit: 100 });
+                const products = data.data || data;
+                
+                document.getElementById('products-loading').style.display = 'none';
+                document.getElementById('products-table').style.display = 'table';
+                
+                const tbody = document.getElementById('products-tbody');
+                tbody.innerHTML = products.map(tv => `
+                    <tr>
+                        <td>${tv.brand}</td>
+                        <td>${tv.model}</td>
+                        <td>${formatPrice(tv.price)}</td>
+                        <td><span class="${tv.stock > 0 ? 'badge-success' : 'badge-danger'} badge">${tv.stock}</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-outline" onclick="editProduct('${tv._id}')">Edit</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteProduct('${tv._id}')">Delete</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading products:', error);
+                document.getElementById('products-loading').textContent = 'Error loading products';
+            }
+        }
+
+        // Add product modal
+        document.getElementById('add-product-btn').addEventListener('click', () => {
+            currentEditId = null;
+            document.getElementById('modal-title').textContent = 'Add Product';
+            document.getElementById('product-form').reset();
+            document.getElementById('product-modal').classList.add('active');
+        });
+
+        document.getElementById('cancel-product').addEventListener('click', () => {
+            document.getElementById('product-modal').classList.remove('active');
+        });
+
+        // Close modal on background click
+        document.getElementById('product-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'product-modal') {
+                document.getElementById('product-modal').classList.remove('active');
+            }
+        });
+
+        // Save product
+        document.getElementById('product-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const productData = {
+                brand: document.getElementById('product-brand').value,
+                model: document.getElementById('product-model').value,
+                price: parseFloat(document.getElementById('product-price').value),
+                stock: parseInt(document.getElementById('product-stock').value),
+                specs: {
+                    size: document.getElementById('product-size').value,
+                    resolution: document.getElementById('product-resolution').value,
+                    smartTV: document.getElementById('product-smart-tv').value === 'true',
+                    hdmiPorts: parseInt(document.getElementById('product-hdmi').value) || 0
+                }
+            };
+
+            try {
+                if (currentEditId) {
+                    await API.updateTV(currentEditId, productData);
+                    showNotification('Product updated!', 'success');
+                } else {
+                    await API.createTV(productData);
+                    showNotification('Product created!', 'success');
+                }
+                
+                document.getElementById('product-modal').classList.remove('active');
+                loadProducts();
+            } catch (error) {
+                showNotification('Operation failed', 'error');
+            }
+        });
+
+        // Edit product
+        async function editProduct(id) {
+            try {
+                const product = await API.getTVById(id);
+                currentEditId = id;
+                
+                document.getElementById('modal-title').textContent = 'Edit Product';
+                document.getElementById('product-brand').value = product.brand;
+                document.getElementById('product-model').value = product.model;
+                document.getElementById('product-price').value = product.price;
+                document.getElementById('product-stock').value = product.stock;
+                document.getElementById('product-size').value = product.specs?.size || '';
+                document.getElementById('product-resolution').value = product.specs?.resolution || '';
+                document.getElementById('product-smart-tv').value = product.specs?.smartTV ? 'true' : 'false';
+                document.getElementById('product-hdmi').value = product.specs?.hdmiPorts || 0;
+                
+                document.getElementById('product-modal').classList.add('active');
+            } catch (error) {
+                showNotification('Failed to load product', 'error');
+            }
+        }
+
+        // Delete product
+        async function deleteProduct(id) {
+            if (!confirm('Delete this product?')) return;
+            
+            try {
+                await API.deleteTV(id);
+                showNotification('Product deleted', 'success');
+                loadProducts();
+            } catch (error) {
+                showNotification('Failed to delete product', 'error');
+            }
+        }
+
+        // Load orders
+        async function loadOrders() {
+            try {
+                const data = await API.getAllOrders();
+                const orders = data.data || data;
+                
+                document.getElementById('orders-loading').style.display = 'none';
+                document.getElementById('orders-table').style.display = 'table';
+                
+                const tbody = document.getElementById('orders-tbody');
+                tbody.innerHTML = orders.map(order => {
+                    const statusClass = {
+                        'pending': 'badge-warning',
+                        'completed': 'badge-success',
+                        'cancelled': 'badge-danger'
+                    }[order.status];
+                    
+                    return `
+                        <tr>
+                            <td>#${order._id.substring(0, 8)}</td>
+                            <td>${order.userId?.name || 'N/A'}</td>
+                            <td>${formatPrice(order.total)}</td>
+                            <td><span class="badge ${statusClass}">${order.status}</span></td>
+                            <td>${formatDate(order.createdAt)}</td>
+                            <td>
+                                ${order.status === 'pending' ? `
+                                    <button class="btn btn-sm btn-secondary" onclick="updateOrderStatus('${order._id}', 'completed')">Complete</button>
+                                    <button class="btn btn-sm btn-danger" onclick="updateOrderStatus('${order._id}', 'cancelled')">Cancel</button>
+                                ` : ''}
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (error) {
+                console.error('Error loading orders:', error);
+                document.getElementById('orders-loading').textContent = 'Error loading orders';
+            }
+        }
+
+        // Update order status
+        async function updateOrderStatus(orderId, status) {
+            try {
+                await API.updateOrderStatus(orderId, status);
+                showNotification(`Order ${status}!`, 'success');
+                loadOrders();
+            } catch (error) {
+                showNotification('Failed to update order', 'error');
+            }
+        }
+
+        // Load statistics
+        async function loadStats() {
+            try {
+                const [salesStats, orderStats] = await Promise.all([
+                    API.getSalesStats(),
+                    API.getOrderStats()
+                ]);
+                
+                document.getElementById('stats-loading').style.display = 'none';
+                
+                const content = document.getElementById('stats-content');
+                content.innerHTML = `
+                    <div style="margin-bottom: 3rem;">
+                        <h3 style="margin-bottom: 1rem;">Sales by Brand</h3>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Brand</th>
+                                        <th>Units Sold</th>
+                                        <th>Revenue</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${salesStats.map(stat => `
+                                        <tr>
+                                            <td><strong>${stat._id}</strong></td>
+                                            <td>${stat.totalSold}</td>
+                                            <td>${formatPrice(stat.revenue)}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h3 style="margin-bottom: 1rem;">Top Selling Products</h3>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Product</th>
+                                        <th>Units Sold</th>
+                                        <th>Revenue</th>
+                                        <th>Orders</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${orderStats.map(stat => `
+                                        <tr>
+                                            <td><strong>${stat.brand} ${stat.model}</strong></td>
+                                            <td>${stat.totalQuantity}</td>
+                                            <td>${formatPrice(stat.totalRevenue)}</td>
+                                            <td>${stat.orderCount}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error loading stats:', error);
+                document.getElementById('stats-loading').textContent = 'Error loading statistics';
+            }
+        }
+
+        // Initialize - load products by default
+        loadProducts();
+    </script>
+</body>
+</html>

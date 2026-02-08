@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Dashboard - Television Store</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-brand">📺 TV Store</a>
+            <ul class="nav-links">
+                <li><a href="index.html">Home</a></li>
+                <li><a href="catalog.html">Catalog</a></li>
+                <li><a href="cart.html">Cart (<span id="cart-count">0</span>)</a></li>
+                <li class="nav-user">
+                    <span class="user-name" id="user-name"></span>
+                    <a href="dashboard.html" id="dashboard-link" style="display: none;">Dashboard</a>
+                    <a href="admin.html" id="admin-link" style="display: none;">Admin</a>
+                    <a href="login.html" id="login-link">Login</a>
+                    <button class="btn btn-sm btn-danger" id="logout-btn" style="display: none;">Logout</button>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="page-header">
+            <h1 class="page-title">My Dashboard</h1>
+            <p class="page-subtitle">Manage your orders and account</p>
+        </div>
+
+        <!-- User Info -->
+        <div class="card" style="margin-bottom: 2rem;">
+            <div class="card-body">
+                <h3 style="margin-bottom: 1rem;">Account Information</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                    <div>
+                        <strong>Name:</strong>
+                        <p id="user-fullname"></p>
+                    </div>
+                    <div>
+                        <strong>Email:</strong>
+                        <p id="user-email"></p>
+                    </div>
+                    <div>
+                        <strong>Role:</strong>
+                        <p id="user-role"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Orders -->
+        <div class="page-header">
+            <h2 class="page-title">My Orders</h2>
+        </div>
+
+        <div id="loading" class="loading">Loading orders...</div>
+        <div id="orders-container"></div>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+    <script>
+        // Update navigation
+        function updateNavigation() {
+            const user = getCurrentUser();
+            
+            if (!user) {
+                window.location.href = 'login.html';
+                return;
+            }
+            
+            const loginLink = document.getElementById('login-link');
+            const logoutBtn = document.getElementById('logout-btn');
+            const userName = document.getElementById('user-name');
+            const dashboardLink = document.getElementById('dashboard-link');
+            const adminLink = document.getElementById('admin-link');
+            
+            loginLink.style.display = 'none';
+            logoutBtn.style.display = 'inline-block';
+            userName.textContent = user.name;
+            dashboardLink.style.display = 'inline-block';
+            
+            if (user.role === 'admin') {
+                adminLink.style.display = 'inline-block';
+            }
+            
+            const cart = JSON.parse(localStorage.getItem('cart') || '[]');
+            document.getElementById('cart-count').textContent = cart.length;
+
+            // Update user info
+            document.getElementById('user-fullname').textContent = user.name;
+            document.getElementById('user-email').textContent = user.email || 'N/A';
+            document.getElementById('user-role').textContent = user.role;
+        }
+
+        document.getElementById('logout-btn')?.addEventListener('click', logout);
+
+        // Load orders
+        async function loadOrders() {
+            try {
+                const orders = await API.getMyOrders();
+                
+                const container = document.getElementById('orders-container');
+                const loading = document.getElementById('loading');
+                
+                loading.style.display = 'none';
+                
+                if (orders.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📦</div>
+                            <h3 class="empty-state-title">No orders yet</h3>
+                            <p class="empty-state-text">Start shopping to see your orders here</p>
+                            <a href="catalog.html" class="btn btn-primary">Browse Catalog</a>
+                        </div>
+                    `;
+                    return;
+                }
+
+                container.innerHTML = orders.map(order => {
+                    const statusClass = {
+                        'pending': 'badge-warning',
+                        'completed': 'badge-success',
+                        'cancelled': 'badge-danger'
+                    }[order.status];
+
+                    return `
+                        <div class="card" style="margin-bottom: 1.5rem;">
+                            <div class="card-body">
+                                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+                                    <div>
+                                        <h3 style="margin-bottom: 0.5rem;">Order #${order._id.substring(0, 8)}</h3>
+                                        <p style="color: var(--text-light); font-size: 0.875rem;">
+                                            ${formatDate(order.createdAt)}
+                                        </p>
+                                    </div>
+                                    <div style="text-align: right;">
+                                        <span class="badge ${statusClass}">${order.status.toUpperCase()}</span>
+                                        <p style="font-size: 1.25rem; font-weight: bold; color: var(--primary-color); margin-top: 0.5rem;">
+                                            ${formatPrice(order.total)}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div style="border-top: 1px solid var(--border-color); padding-top: 1rem;">
+                                    <strong style="display: block; margin-bottom: 0.5rem;">Items:</strong>
+                                    ${order.items.map(item => `
+                                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                                            <span>
+                                                ${item.tvId?.brand || 'Product'} ${item.tvId?.model || ''} 
+                                                <span style="color: var(--text-light);">× ${item.quantity}</span>
+                                            </span>
+                                            <span>${formatPrice(item.price * item.quantity)}</span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+
+                                ${order.status === 'pending' ? `
+                                    <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                                        <button class="btn btn-danger btn-sm" onclick="cancelOrder('${order._id}')">
+                                            Cancel Order
+                                        </button>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } catch (error) {
+                console.error('Error loading orders:', error);
+                document.getElementById('loading').textContent = 'Error loading orders';
+            }
+        }
+
+        // Cancel order
+        async function cancelOrder(orderId) {
+            if (!confirm('Are you sure you want to cancel this order?')) return;
+
+            try {
+                const result = await API.cancelOrder(orderId);
+                
+                if (result.message) {
+                    showNotification('Order cancelled successfully', 'success');
+                    loadOrders();
+                } else {
+                    showNotification(result.message || 'Failed to cancel order', 'error');
+                }
+            } catch (error) {
+                showNotification('Failed to cancel order', 'error');
+            }
+        }
+
+        // Initialize
+        updateNavigation();
+        loadOrders();
+    </script>
+</body>
+</html>

@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shopping Cart - Television Store</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-brand">📺 TV Store</a>
+            <ul class="nav-links">
+                <li><a href="index.html">Home</a></li>
+                <li><a href="catalog.html">Catalog</a></li>
+                <li><a href="cart.html">Cart (<span id="cart-count">0</span>)</a></li>
+                <li class="nav-user">
+                    <span class="user-name" id="user-name"></span>
+                    <a href="dashboard.html" id="dashboard-link" style="display: none;">Dashboard</a>
+                    <a href="admin.html" id="admin-link" style="display: none;">Admin</a>
+                    <a href="login.html" id="login-link">Login</a>
+                    <button class="btn btn-sm btn-danger" id="logout-btn" style="display: none;">Logout</button>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="page-header">
+            <h1 class="page-title">Shopping Cart</h1>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
+            <!-- Cart Items -->
+            <div>
+                <div id="cart-items"></div>
+            </div>
+
+            <!-- Cart Summary -->
+            <div>
+                <div class="cart-summary">
+                    <h3 style="margin-bottom: 1.5rem;">Order Summary</h3>
+                    <div class="summary-row">
+                        <span>Subtotal:</span>
+                        <span id="subtotal">$0</span>
+                    </div>
+                    <div class="summary-row">
+                        <span>Tax (10%):</span>
+                        <span id="tax">$0</span>
+                    </div>
+                    <div class="summary-row summary-total">
+                        <span>Total:</span>
+                        <span id="total">$0</span>
+                    </div>
+                    <button class="btn btn-primary" id="checkout-btn" style="width: 100%; margin-top: 1rem;">
+                        Proceed to Checkout
+                    </button>
+                    <a href="catalog.html" class="btn btn-outline" style="width: 100%; margin-top: 0.5rem;">
+                        Continue Shopping
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+    <script>
+        let cartItems = [];
+        let products = {};
+
+        // Update navigation
+        function updateNavigation() {
+            const user = getCurrentUser();
+            const loginLink = document.getElementById('login-link');
+            const logoutBtn = document.getElementById('logout-btn');
+            const userName = document.getElementById('user-name');
+            const dashboardLink = document.getElementById('dashboard-link');
+            const adminLink = document.getElementById('admin-link');
+            
+            if (user) {
+                loginLink.style.display = 'none';
+                logoutBtn.style.display = 'inline-block';
+                userName.textContent = user.name;
+                dashboardLink.style.display = 'inline-block';
+                
+                if (user.role === 'admin') {
+                    adminLink.style.display = 'inline-block';
+                }
+            }
+            
+            const cart = JSON.parse(localStorage.getItem('cart') || '[]');
+            document.getElementById('cart-count').textContent = cart.length;
+        }
+
+        document.getElementById('logout-btn')?.addEventListener('click', logout);
+
+        // Load cart
+        async function loadCart() {
+            const cart = JSON.parse(localStorage.getItem('cart') || '[]');
+            cartItems = cart;
+
+            if (cart.length === 0) {
+                document.getElementById('cart-items').innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🛒</div>
+                        <h3 class="empty-state-title">Your cart is empty</h3>
+                        <p class="empty-state-text">Add some products to get started!</p>
+                        <a href="catalog.html" class="btn btn-primary">Browse Catalog</a>
+                    </div>
+                `;
+                updateSummary();
+                return;
+            }
+
+            // Fetch product details
+            for (const item of cart) {
+                try {
+                    const product = await API.getTVById(item.tvId);
+                    products[item.tvId] = product;
+                } catch (error) {
+                    console.error('Error loading product:', error);
+                }
+            }
+
+            displayCart();
+            updateSummary();
+        }
+
+        // Display cart
+        function displayCart() {
+            const container = document.getElementById('cart-items');
+            
+            container.innerHTML = cartItems.map(item => {
+                const product = products[item.tvId];
+                if (!product) return '';
+
+                return `
+                    <div class="cart-item">
+                        <div class="cart-item-img"></div>
+                        <div class="cart-item-details">
+                            <h3 class="cart-item-title">${product.brand} ${product.model}</h3>
+                            <p style="color: var(--text-light); margin-bottom: 0.5rem;">
+                                ${product.specs?.size || 'N/A'} | ${product.specs?.resolution || 'N/A'}
+                            </p>
+                            <div class="cart-item-price">${formatPrice(product.price)}</div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 1rem;">
+                            <div class="form-group" style="margin: 0;">
+                                <label class="form-label" style="font-size: 0.75rem;">Quantity</label>
+                                <input type="number" class="form-input" value="${item.quantity}" 
+                                    min="1" max="${product.stock}" 
+                                    onchange="updateQuantity('${item.tvId}', this.value)"
+                                    style="width: 80px;">
+                            </div>
+                            <button class="btn btn-danger btn-sm" onclick="removeFromCart('${item.tvId}')">
+                                Remove
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Update quantity
+        function updateQuantity(tvId, quantity) {
+            quantity = parseInt(quantity);
+            if (quantity < 1) quantity = 1;
+
+            const item = cartItems.find(i => i.tvId === tvId);
+            if (item) {
+                const product = products[tvId];
+                if (quantity > product.stock) {
+                    showNotification(`Only ${product.stock} items in stock`, 'error');
+                    quantity = product.stock;
+                }
+                item.quantity = quantity;
+            }
+
+            localStorage.setItem('cart', JSON.stringify(cartItems));
+            displayCart();
+            updateSummary();
+        }
+
+        // Remove from cart
+        function removeFromCart(tvId) {
+            cartItems = cartItems.filter(item => item.tvId !== tvId);
+            localStorage.setItem('cart', JSON.stringify(cartItems));
+            updateNavigation();
+            
+            if (cartItems.length === 0) {
+                loadCart();
+            } else {
+                displayCart();
+                updateSummary();
+            }
+            
+            showNotification('Item removed from cart', 'success');
+        }
+
+        // Update summary
+        function updateSummary() {
+            let subtotal = 0;
+
+            for (const item of cartItems) {
+                const product = products[item.tvId];
+                if (product) {
+                    subtotal += product.price * item.quantity;
+                }
+            }
+
+            const tax = subtotal * 0.1;
+            const total = subtotal + tax;
+
+            document.getElementById('subtotal').textContent = formatPrice(subtotal);
+            document.getElementById('tax').textContent = formatPrice(tax);
+            document.getElementById('total').textContent = formatPrice(total);
+        }
+
+        // Checkout
+        document.getElementById('checkout-btn').addEventListener('click', async () => {
+            if (!isLoggedIn()) {
+                showNotification('Please login to checkout', 'error');
+                setTimeout(() => window.location.href = 'login.html', 1500);
+                return;
+            }
+
+            if (cartItems.length === 0) {
+                showNotification('Your cart is empty', 'error');
+                return;
+            }
+
+            // Prepare order items
+            const orderItems = cartItems.map(item => ({
+                tvId: item.tvId,
+                quantity: item.quantity
+            }));
+
+            try {
+                const result = await API.createOrder(orderItems);
+                
+                if (result._id) {
+                    showNotification('Order placed successfully!', 'success');
+                    
+                    // Clear cart
+                    localStorage.removeItem('cart');
+                    
+                    // Redirect to dashboard
+                    setTimeout(() => {
+                        window.location.href = 'dashboard.html';
+                    }, 1500);
+                } else {
+                    showNotification(result.message || 'Order failed', 'error');
+                }
+            } catch (error) {
+                console.error('Checkout error:', error);
+                showNotification('Checkout failed. Please try again.', 'error');
+            }
+        });
+
+        // Initialize
+        updateNavigation();
+        loadCart();
+    </script>
+</body>
+</html>

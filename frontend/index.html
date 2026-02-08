@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Television Store - Home</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-brand">📺 TV Store</a>
+            <ul class="nav-links">
+                <li><a href="index.html">Home</a></li>
+                <li><a href="catalog.html">Catalog</a></li>
+                <li><a href="cart.html">Cart (<span id="cart-count">0</span>)</a></li>
+                <li class="nav-user">
+                    <span class="user-name" id="user-name"></span>
+                    <a href="dashboard.html" id="dashboard-link" style="display: none;">Dashboard</a>
+                    <a href="admin.html" id="admin-link" style="display: none;">Admin</a>
+                    <a href="login.html" id="login-link">Login</a>
+                    <button class="btn btn-sm btn-danger" id="logout-btn" style="display: none;">Logout</button>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container">
+            <h1>Welcome to TV Store</h1>
+            <p>Find the perfect television for your home</p>
+            <a href="catalog.html" class="btn btn-primary" style="font-size: 1.125rem; padding: 0.875rem 2rem;">
+                Browse Catalog
+            </a>
+        </div>
+    </section>
+
+    <!-- Featured Products -->
+    <section class="container">
+        <div class="page-header">
+            <h2 class="page-title">Featured Products</h2>
+            <p class="page-subtitle">Check out our latest and most popular TVs</p>
+        </div>
+
+        <div id="loading" class="loading">Loading products...</div>
+        
+        <div id="featured-products" class="grid grid-3"></div>
+    </section>
+
+    <!-- Stats Section -->
+    <section class="container">
+        <div class="page-header">
+            <h2 class="page-title">Our Brands</h2>
+            <p class="page-subtitle">Top brands available in our store</p>
+        </div>
+        
+        <div id="brands-stats" class="grid grid-4"></div>
+    </section>
+
+    <!-- Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+    <script>
+        // Update navigation
+        function updateNavigation() {
+            const user = getCurrentUser();
+            const loginLink = document.getElementById('login-link');
+            const logoutBtn = document.getElementById('logout-btn');
+            const userName = document.getElementById('user-name');
+            const dashboardLink = document.getElementById('dashboard-link');
+            const adminLink = document.getElementById('admin-link');
+            
+            if (user) {
+                loginLink.style.display = 'none';
+                logoutBtn.style.display = 'inline-block';
+                userName.textContent = user.name;
+                dashboardLink.style.display = 'inline-block';
+                
+                if (user.role === 'admin') {
+                    adminLink.style.display = 'inline-block';
+                }
+            }
+            
+            // Update cart count
+            const cart = JSON.parse(localStorage.getItem('cart') || '[]');
+            document.getElementById('cart-count').textContent = cart.length;
+        }
+
+        // Logout handler
+        document.getElementById('logout-btn')?.addEventListener('click', logout);
+
+        // Load featured products
+        async function loadFeaturedProducts() {
+            try {
+                const data = await API.getAllTVs({ limit: 6, sortBy: 'createdAt', order: 'desc' });
+                const products = data.data || data;
+                
+                const container = document.getElementById('featured-products');
+                const loading = document.getElementById('loading');
+                
+                loading.style.display = 'none';
+                
+                if (products.length === 0) {
+                    container.innerHTML = '<div class="empty-state"><p>No products available</p></div>';
+                    return;
+                }
+                
+                container.innerHTML = products.map(tv => `
+                    <div class="card product-card">
+                        <div class="card-img"></div>
+                        ${tv.stock > 0 ? '<span class="product-badge">In Stock</span>' : ''}
+                        <div class="card-body">
+                            <h3 class="card-title">${tv.brand} ${tv.model}</h3>
+                            <p class="card-text">
+                                ${tv.specs?.size || 'N/A'} | ${tv.specs?.resolution || 'N/A'}
+                                ${tv.specs?.smartTV ? ' | Smart TV' : ''}
+                            </p>
+                            <div class="product-price">${formatPrice(tv.price)}</div>
+                            <p class="product-stock ${tv.stock > 0 ? 'in-stock' : 'out-of-stock'}">
+                                ${tv.stock > 0 ? `${tv.stock} in stock` : 'Out of stock'}
+                            </p>
+                        </div>
+                        <div class="card-footer">
+                            <a href="product.html?id=${tv._id}" class="btn btn-outline btn-sm">View Details</a>
+                            <button class="btn btn-primary btn-sm" onclick="addToCart('${tv._id}')" 
+                                ${tv.stock === 0 ? 'disabled' : ''}>
+                                Add to Cart
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading products:', error);
+                document.getElementById('loading').textContent = 'Error loading products';
+            }
+        }
+
+        // Load brands stats
+        async function loadBrandsStats() {
+            try {
+                const stats = await API.getBrandsStats();
+                const container = document.getElementById('brands-stats');
+                
+                container.innerHTML = stats.map(brand => `
+                    <div class="card">
+                        <div class="card-body">
+                            <h3 class="card-title">${brand._id}</h3>
+                            <p class="card-text">
+                                <strong>${brand.count}</strong> models<br>
+                                Avg: ${formatPrice(brand.avgPrice)}
+                            </p>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading brands:', error);
+            }
+        }
+
+        // Add to cart
+        function addToCart(tvId) {
+            const cart = JSON.parse(localStorage.getItem('cart') || '[]');
+            
+            const existing = cart.find(item => item.tvId === tvId);
+            if (existing) {
+                existing.quantity++;
+            } else {
+                cart.push({ tvId, quantity: 1 });
+            }
+            
+            localStorage.setItem('cart', JSON.stringify(cart));
+            updateNavigation();
+            showNotification('Added to cart!', 'success');
+        }
+
+        // Initialize
+        updateNavigation();
+        loadFeaturedProducts();
+        loadBrandsStats();
+    </script>
+</body>
+</html>
