@@ -1,8 +1,14 @@
 const router = require("express").Router();
-const { getSalesStats } = require("../controllers/statsController");
-const auth = require("../middleware/auth");
-const admin = require("../middleware/admin");
 
-router.get("/sales", auth, admin, getSalesStats);
+const {
+  protect,
+  adminOnly
+} = require("../middleware/auth");
+
+const {
+  getSalesStats
+} = require("../controllers/statsController");
+
+router.get("/sales", protect, adminOnly, getSalesStats);
 
 module.exports = router;
