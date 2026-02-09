@@ -159,7 +159,6 @@
                 
                 container.innerHTML = products.map(tv => `
                     <div class="card product-card">
-                        <div class="card-img"></div>
                         ${tv.stock > 0 ? '<span class="product-badge">In Stock</span>' : ''}
                         <div class="card-body">
                             <h3 class="card-title">${tv.brand} ${tv.model}</h3>
